@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deteksi Muka</title>
+    <link href="/static/style.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h2 class="text-center mb-4">Deteksi Muka</h2>
+        
+        <!-- Upload -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Unggah Gambar</h5>
+                <form id="uploadForm">
+                    <div class="mb-3">
+                        <input type="file" class="form-control" id="imageUpload" accept="image/*" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Deteksi Muka</button>
+                </form>
+                <div class="mt-3" id="uploadResult">
+                    <img id="resultImage" class="result-image d-none">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Webcam -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Kamera</h5>
+                <button id="startWebcam" class="btn btn-primary w-100">Mulai Kamera</button>
+                <div id="webcamContainer" class="mt-3 d-none">
+                    <img id="webcamFeed" class="webcam-feed">
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Handle image upload
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById('imageUpload');
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+            
+        const resultImage = document.getElementById('resultImage');
+        resultImage.classList.add('d-none');
+            
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+            
+        resultImage.src = URL.createObjectURL(await response.blob());
+        resultImage.classList.remove('d-none');
+    });
+        
+        // Handle webcam
+        document.getElementById('startWebcam').addEventListener('click', () => {
+            const webcamContainer = document.getElementById('webcamContainer');
+            const webcamFeed = document.getElementById('webcamFeed');
+            const button = document.getElementById('startWebcam');
+            
+            if (webcamContainer.classList.contains('d-none')) {
+                webcamFeed.src = '/webcam';
+                webcamContainer.classList.remove('d-none');
+                button.textContent = 'Stop Webcam';
+                button.classList.remove('btn-primary');
+                button.classList.add('btn-danger');
+            } else {
+                webcamFeed.src = '';
+                webcamContainer.classList.add('d-none');
+                button.textContent = 'Start Webcam';
+                button.classList.remove('btn-danger');
+                button.classList.add('btn-primary');
+            }
+        });
+    </script>
+</body>
+</html>
