@@ -113,18 +113,38 @@ build_name_to_ethnic_map()
 # # Setup logging
 # logging.basicConfig(level=logging.INFO)
 
-def analyze_emotion(face_img: np.ndarray) -> str:
+def analyze_emotion(face_img: np.ndarray) -> Dict:
     try:
         analysis = DeepFace.analyze(
             face_img, 
-            actions=['emotion'],
+            actions=['emotion', 'age', 'gender'],
             detector_backend=FACE_DETECTOR,
             enforce_detection=False
         )
-        return analysis[0]['dominant_emotion']
+
+        gender_dict = analysis[0].get("gender", {})
+        if isinstance(gender_dict, dict):
+            # Hitung persentase semua gender
+            gender_percent = {
+                k: round(float(v), 2) for k, v in gender_dict.items()
+            }
+        else:
+            gender_percent = {"Unknown": 100.0}
+
+        return {
+            "emotion": analysis[0].get("dominant_emotion", "Unknown"),
+            "age": int(analysis[0].get("age", -1)) if isinstance(analysis[0].get("age", None), (float, np.floating)) else analysis[0].get("age", "Unknown"),
+            "gender": gender_percent
+        }
     except Exception as e:
-        logging.error("Emotion analysis failed", exc_info=True)
-        return "Unknown"
+        logging.error("Face analysis failed", exc_info=True)
+        return {
+            "emotion": "Unknown",
+            "age": "Unknown",
+            "gender": {"Unknown": 100.0}
+        }
+
+
 
 def match_face(face_img: np.ndarray) -> Dict:
     similarity_results = []
@@ -166,9 +186,10 @@ def detect_faces(image: np.ndarray) -> List[Dict]:
             similarity_percent = (1 - best_match["similarity"]) * 100
             summary = (
                 f"Kamu terlihat seperti {best_match['name']} "
-                f"(Etnis: {best_match['ethnic']}, "
+                f"(Etnis: {best_match['ethnic']}"
                 f"Confidence: {similarity_percent:.1f}%), "
-                f"kelihatan {emotion}."
+                f"{emotion['gender']}, umur {emotion['age']}, terlihat {emotion['emotion']}."
+
             )
             ethnic_result = best_match["ethnic"]
         else:
@@ -184,15 +205,42 @@ def detect_faces(image: np.ndarray) -> List[Dict]:
         })
     return results
 
+def split_text_lines(text, max_line_length=50):
+    words = text.split()
+    lines = []
+    current_line = ''
+    for word in words:
+        if len(current_line + ' ' + word) <= max_line_length:
+            current_line += ' ' + word if current_line else word
+        else:
+            lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines
+
+
 def draw_detections(image: np.ndarray, detections: List[Dict]) -> np.ndarray:
     for det in detections:
         x, y, w, h = det["box"]
         cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        gender_translation = {
+            "Man": "Pria",      
+            "Woman": "Wanita"    
+        }
+
+        gender_str = ', '.join([
+            f"{gender_translation.get(k, k)} {v:.2f}%" for k, v in det['emotion']['gender'].items()
+        ])
+        summary_lines = split_text_lines(det.get("summary", ""), max_line_length=50)
+
         info = [
             f"Etnis: {det.get('ethnic', '?')}",
-            f"Emosi: {det.get('emotion', '?')}",
-            det.get("summary", "")
-        ]
+            f"Emosi: {det['emotion'].get('emotion', '?')}",
+            f"Umur: {det['emotion'].get('age', '?')}",
+            f"Gender: {gender_str}",
+        ] + summary_lines
+
         y_text = y - 10 if y - 10 > 10 else y + h + 10
         for i, line in enumerate(info):
             cv2.putText(image, line, (x, y_text + i*25),
@@ -249,15 +297,15 @@ def generate_frames():
                 if best_match:
                     similarity_percent = (1 - best_match["similarity"]) * 100
                     summary = (
-                        f"You look like {best_match['name']} "
-                        f"(Ethnic: {best_match['ethnic']}, "
+                        f"Kamu terlihat seperti {best_match['name']} "
+                        f"(Etnis: {best_match['ethnic']}"
                         f"Confidence: {similarity_percent:.1f}%), "
-                        f"appearing {emotion}."
+                        f"{emotion['gender']}, umur {emotion['age']}, terlihat {emotion['emotion']}."
                     )
                     ethnic_result = best_match["ethnic"]
                 else:
-                    summary = "No match found in dataset."
-                    ethnic_result = "Unknown"
+                    summary = "Tidak ada yang mirip dalam dataset."
+                    ethnic_result = "Tidak diketahui"
 
                 results.append({
                     "box": (x, y, w, h),
@@ -298,11 +346,16 @@ def generate_frames():
                         "summary": match["summary"]
                     })
                 else:
+                    # Provide default values when no match is found
                     final_detections.append({
                         "box": (x, y, w, h),
-                        "emotion": "?",
-                        "ethnic": "?",
-                        "summary": "Detecting..."
+                        "emotion": {
+                            "emotion": "Unknown",
+                            "age": "Unknown",
+                            "gender": {"Unknown": 100.0}
+                        },
+                        "ethnic": "Unknown",
+                        "summary": "Processing..."
                     })
 
             # Draw all info
